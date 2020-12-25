@@ -114,22 +114,13 @@ async function get_release_info(owner: string, repo: string): Promise<releaseInf
     }
 
     release_info.next_release_is_minor = next_minor_prereleases.length > 0;
-    release_info.next.prerelease = next_minor_prereleases.length > 0 ? next_minor_prereleases[0] : next_major_prereleases[0];
+    const next_prerelease = next_minor_prereleases.length > 0 ? next_minor_prereleases[0] : next_major_prereleases[0]
+    release_info.next.prerelease = next_prerelease;
 
-    const next_next_minor = semver.minor(
-        semver.inc(get_major_minor_patch(release_info.next.prerelease), "minor")
-    );
-    const next_next_major = semver.major(
-        semver.inc(get_major_minor_patch(release_info.next.prerelease), "major")
-    );
-    const next_next_minor_prereleases = prereleases_after_current_release.filter(
-        (x) =>
-            semver.major(x) === semver.major(current_release) &&
-            semver.minor(x) === next_next_minor
-    );
-    const next_next_major_prereleases = prereleases_after_current_release.filter(
-        (x) => semver.major(x) === next_next_major
-    );
+    const next_next_minor = semver.minor(semver.inc(get_major_minor_patch(next_prerelease), "minor")!);
+    const next_next_major = semver.major(semver.inc(get_major_minor_patch(next_prerelease), "major")!);
+    const next_next_minor_prereleases = prereleases_after_current_release.filter(x => semver.major(x) === semver.major(current_release) && semver.minor(x) === next_next_minor);
+    const next_next_major_prereleases = prereleases_after_current_release.filter(x => semver.major(x) === next_next_major);
 
     if (
         next_next_minor_prereleases.length === 0 &&
