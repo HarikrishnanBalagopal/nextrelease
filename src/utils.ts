@@ -99,7 +99,7 @@ async function get_release_info(owner: string, repo: string): Promise<releaseInf
 
     const prereleases_after_current_release = prereleases.filter(x => semver.gt(x, current_release));
     if (prereleases_after_current_release.length === 0) {
-        core.info("stopping because there are no prereleases after current release");
+        core.info("stopping because there are no prereleases after current version");
         return release_info;
     }
 
@@ -122,10 +122,8 @@ async function get_release_info(owner: string, repo: string): Promise<releaseInf
     const next_next_minor_prereleases = prereleases_after_current_release.filter(x => semver.major(x) === semver.major(current_release) && semver.minor(x) === next_next_minor);
     const next_next_major_prereleases = prereleases_after_current_release.filter(x => semver.major(x) === next_next_major);
 
-    if (
-        next_next_minor_prereleases.length === 0 &&
-        next_next_major_prereleases.length === 0
-    ) {
+    if (next_next_minor_prereleases.length === 0 && next_next_major_prereleases.length === 0) {
+        core.info("stopping because there are no prereleases after next version");
         return release_info;
     }
 
