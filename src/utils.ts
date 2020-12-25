@@ -149,7 +149,7 @@ async function get_release_info(owner: string, repo: string, octokit: Octokit | 
             });
             return resp.data.html_url;
         } catch (err) {
-            console.error(err);
+            core.debug(`error occurred while fetching the (pre)release for tag ${tag} error: ${err}`);
         }
         return null;
     };
