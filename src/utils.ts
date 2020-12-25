@@ -3,10 +3,17 @@ import * as core from '@actions/core';
 import { Octokit } from "@octokit/rest";
 import { Endpoints } from '@octokit/types';
 
-export { get_all_tags };
+export { get_all_tags, get_major_minor_patch };
 
 type listTagsRespT = Endpoints["GET /repos/{owner}/{repo}/tags"]["response"];
 type tagsT = listTagsRespT['data'][0];
+type releaseInfoT = {
+    current: { release: string | null, prerelease: string | null },
+    next: { prerelease: string | null },
+    next_next: { prerelease: string | null },
+    next_release_is_minor: boolean,
+    next_next_release_is_minor: boolean,
+};
 
 async function get_all_tags(owner: string, repo: string, octokit: Octokit | null = null, max_tags = 40): Promise<tagsT[]> {
     core.debug('get_all_tags');
@@ -36,37 +43,20 @@ async function get_all_tags(owner: string, repo: string, octokit: Octokit | null
     }
 }
 
-function get_related_info(release, prereleases) {
-    const release_obj = semver.parse(release);
-    const major_minor_prereleases = prereleases.filter(
-        (x) =>
-            semver.major(x) === release_obj.major &&
-            semver.minor(x) === release_obj.minor
-    );
-    const latest_prerelease_on_given_release_branch =
-        major_minor_prereleases.length > 0 ? major_minor_prereleases[0] : null;
-    const next_minor_release = semver.inc(release, "minor");
-    const next_major_release = semver.inc(release, "major");
-    return {
-        next_minor_release,
-        next_major_release,
-        latest_prerelease_on_given_release_branch,
-    };
-}
-
-function get_major_minor_patch(v) {
+function get_major_minor_patch(v: string): string {
+    core.debug('get_major_minor_patch');
     const x = semver.parse(v);
-    return `v${x.major}.${x.minor}.${x.patch}`;
+    if (x === null) return '';
+    return `${x.major}.${x.minor}.${x.patch}`;
 }
 
-async function get_release_info(owner, repo) {
+async function get_release_info(owner: string, repo: string): Promise<releaseInfoT> {
+    core.debug('get_release_info');
     /*
-      assume that there is already at least one release and corresponding prerelease
-      so data_to_return.current will not have nulls
-      also assumes alpha -> beta -> rc -> release progression
-      */
-    const ctx = { owner, repo };
-    const data_to_return = {
+        assume that there is already at least one release and corresponding prerelease so release_info.current will not have nulls
+        assume alpha -> beta -> rc -> release progression
+    */
+    const release_info: releaseInfoT = {
         current: { release: null, prerelease: null },
         next: { prerelease: null },
         next_next: { prerelease: null },
@@ -74,26 +64,36 @@ async function get_release_info(owner, repo) {
         next_next_release_is_minor: false,
     };
 
-    const tags = await get_all_tags(ctx);
-    if (tags.length === 0) {
-        return console.log("no tags found");
+    const tags = await get_all_tags(owner, repo);
+    const valid_tags = tags.map(x => x.name).filter(x => semver.valid(x));
+    if (valid_tags.length === 0) {
+        core.info("stopping because we did not find any valid semantic version tags");
+        return release_info;
     }
-    const valid_tags = tags.map((x) => x.name).filter(semver.valid);
+
     //valid_tags.push('v1.21.0-beta.0', 'v1.22.0-alpha.4') // for testing
     const sorted_tags = valid_tags.sort(semver.rcompare);
+
     const releases = sorted_tags.filter((x) => semver.prerelease(x) === null);
     const prereleases = sorted_tags.filter((x) => semver.prerelease(x) !== null);
     const latest_release = releases.length > 0 ? releases[0] : null;
-    data_to_return.current.release = latest_release;
+    release_info.current.release = latest_release;
     if (latest_release === null) {
         console.error("no latest release. aborting");
-        return data_to_return;
+        return release_info;
     }
-    const info = get_related_info(latest_release, prereleases);
-    data_to_return.current.prerelease = info.latest_prerelease_on_given_release_branch;
-    if (info.latest_prerelease_on_given_release_branch === null) {
+    // start get_related_info
+    const release_obj = semver.parse(latest_release);
+    const major_minor_prereleases = prereleases.filter((x) => semver.major(x) === release_obj!.major && semver.minor(x) === release_obj!.minor);
+    const latest_prerelease_on_given_release_branch = major_minor_prereleases.length > 0 ? major_minor_prereleases[0] : null;
+    const next_minor_release = semver.inc(latest_release, "minor");
+    const next_major_release = semver.inc(latest_release, "major");
+    // end get_related_info
+
+    release_info.current.prerelease = latest_prerelease_on_given_release_branch;
+    if (latest_prerelease_on_given_release_branch === null) {
         console.error("no latest prerelease. aborting");
-        return data_to_return;
+        return release_info;
     }
 
     const prereleases_after_current_release = prereleases.filter((x) =>
@@ -101,7 +101,7 @@ async function get_release_info(owner, repo) {
     );
     if (prereleases_after_current_release.length === 0) {
         console.log("no prereleases after current release");
-        return data_to_return;
+        return release_info;
     }
 
     const next_minor_prereleases = prereleases_after_current_release.filter(
@@ -118,17 +118,17 @@ async function get_release_info(owner, repo) {
         next_major_prereleases.length === 0
     ) {
         console.error("next release is neither minor nor major");
-        return data_to_return;
+        return release_info;
     }
 
-    data_to_return.next_release_is_minor = next_minor_prereleases.length > 0;
-    data_to_return.next.prerelease = next_minor_prereleases.length > 0 ? next_minor_prereleases[0] : next_major_prereleases[0];
+    release_info.next_release_is_minor = next_minor_prereleases.length > 0;
+    release_info.next.prerelease = next_minor_prereleases.length > 0 ? next_minor_prereleases[0] : next_major_prereleases[0];
 
     const next_next_minor = semver.minor(
-        semver.inc(get_major_minor_patch(data_to_return.next.prerelease), "minor")
+        semver.inc(get_major_minor_patch(release_info.next.prerelease), "minor")
     );
     const next_next_major = semver.major(
-        semver.inc(get_major_minor_patch(data_to_return.next.prerelease), "major")
+        semver.inc(get_major_minor_patch(release_info.next.prerelease), "major")
     );
     const next_next_minor_prereleases = prereleases_after_current_release.filter(
         (x) =>
@@ -143,13 +143,13 @@ async function get_release_info(owner, repo) {
         next_next_minor_prereleases.length === 0 &&
         next_next_major_prereleases.length === 0
     ) {
-        return data_to_return;
+        return release_info;
     }
 
-    data_to_return.next_next_release_is_minor = next_next_minor_prereleases.length > 0;
-    data_to_return.next_next.prerelease = next_next_minor_prereleases.length > 0 ? next_next_minor_prereleases[0] : next_next_major_prereleases[0];
+    release_info.next_next_release_is_minor = next_next_minor_prereleases.length > 0;
+    release_info.next_next.prerelease = next_next_minor_prereleases.length > 0 ? next_next_minor_prereleases[0] : next_next_major_prereleases[0];
 
-    return data_to_return;
+    return release_info;
 }
 
 function helper(owner, repo) {
@@ -179,5 +179,3 @@ async function get_release_info_extra(owner, repo) {
     data.next_next.prerelease_url = await get_release_url(data.next_next.prerelease);
     return data;
 }
-
-module.exports = { on_document_ready, get_major_minor_patch, get_release_info, get_release_info_extra };
