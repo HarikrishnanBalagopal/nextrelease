@@ -3,7 +3,7 @@ import * as core from '@actions/core';
 import { Octokit } from "@octokit/rest";
 import { Endpoints } from '@octokit/types';
 
-export { get_all_tags, get_major_minor_patch };
+export { get_all_tags, get_major_minor_patch, get_release_info_without_urls, get_release_info };
 
 type listTagsRespT = Endpoints["GET /repos/{owner}/{repo}/tags"]["response"];
 type tagsT = listTagsRespT['data'][0];
@@ -50,7 +50,7 @@ function get_major_minor_patch(v: string): string {
     return `${x.major}.${x.minor}.${x.patch}`;
 }
 
-async function get_release_info(owner: string, repo: string): Promise<releaseInfoT> {
+async function get_release_info_without_urls(owner: string, repo: string): Promise<releaseInfoT> {
     core.debug('get_release_info');
     /*
         assume that there is already at least one release and corresponding prerelease so release_info.current will not have nulls
@@ -151,8 +151,8 @@ function helper(owner: string, repo: string) {
     }
 }
 
-async function get_release_info_extra(owner: string, repo: string) {
-    const data = await get_release_info(owner, repo);
+async function get_release_info(owner: string, repo: string): Promise<releaseInfoT> {
+    const data = await get_release_info_without_urls(owner, repo);
     const get_release_url = helper(owner, repo);
     data.current.release_url = await get_release_url(data.current.release);
     data.current.prerelease_url = await get_release_url(data.current.prerelease);
