@@ -8,9 +8,9 @@ export { get_all_tags, get_major_minor_patch };
 type listTagsRespT = Endpoints["GET /repos/{owner}/{repo}/tags"]["response"];
 type tagsT = listTagsRespT['data'][0];
 type releaseInfoT = {
-    current: { release: string | null, prerelease: string | null },
-    next: { prerelease: string | null },
-    next_next: { prerelease: string | null },
+    current: { release: string | null, release_url: string | null, prerelease: string | null, prerelease_url: string | null },
+    next: { prerelease: string | null, prerelease_url: string | null },
+    next_next: { prerelease: string | null, prerelease_url: string | null },
     next_release_is_minor: boolean,
     next_next_release_is_minor: boolean,
 };
@@ -57,9 +57,9 @@ async function get_release_info(owner: string, repo: string): Promise<releaseInf
         assume alpha -> beta -> rc -> release progression
     */
     const release_info: releaseInfoT = {
-        current: { release: null, prerelease: null },
-        next: { prerelease: null },
-        next_next: { prerelease: null },
+        current: { release: null, release_url: null, prerelease: null, prerelease_url: null },
+        next: { prerelease: null, prerelease_url: null },
+        next_next: { prerelease: null, prerelease_url: null },
         next_release_is_minor: false,
         next_next_release_is_minor: false,
     };
@@ -133,9 +133,9 @@ async function get_release_info(owner: string, repo: string): Promise<releaseInf
     return release_info;
 }
 
-function helper(owner, repo) {
+function helper(owner: string, repo: string) {
     const octokit = new Octokit();
-    return async function (tag) {
+    return async function (tag: string | null) {
         if (tag === null) return null;
         try {
             const resp = await octokit.repos.getReleaseByTag({
@@ -151,7 +151,7 @@ function helper(owner, repo) {
     }
 }
 
-async function get_release_info_extra(owner, repo) {
+async function get_release_info_extra(owner: string, repo: string) {
     const data = await get_release_info(owner, repo);
     const get_release_url = helper(owner, repo);
     data.current.release_url = await get_release_url(data.current.release);
