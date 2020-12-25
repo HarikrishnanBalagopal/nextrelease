@@ -50,8 +50,8 @@ function get_major_minor_patch(v: string): string {
     return `${x.major}.${x.minor}.${x.patch}`;
 }
 
-async function get_release_info_without_urls(owner: string, repo: string): Promise<releaseInfoT> {
-    core.debug('get_release_info');
+async function get_release_info_without_urls(owner: string, repo: string, octokit: Octokit | null = null): Promise<releaseInfoT> {
+    core.debug('get_release_info_without_urls');
     /*
         assume that there is already at least one release and corresponding prerelease so release_info.current will not have nulls
         assume alpha -> beta -> rc -> release progression
@@ -64,7 +64,7 @@ async function get_release_info_without_urls(owner: string, repo: string): Promi
         next_next_release_is_minor: false,
     };
 
-    const tags = await get_all_tags(owner, repo);
+    const tags = await get_all_tags(owner, repo, octokit);
     const valid_tags = tags.map(x => x.name).filter(x => semver.valid(x));
     if (valid_tags.length === 0) {
         core.info("stopping because we did not find any valid semantic version tags");
@@ -133,12 +133,16 @@ async function get_release_info_without_urls(owner: string, repo: string): Promi
     return release_info;
 }
 
-function helper(owner: string, repo: string) {
-    const octokit = new Octokit();
-    return async function (tag: string | null) {
+async function get_release_info(owner: string, repo: string, octokit: Octokit | null = null): Promise<releaseInfoT> {
+    core.debug('get_release_info')
+    if (!octokit) {
+        octokit = new Octokit();
+    }
+    const data = await get_release_info_without_urls(owner, repo, octokit);
+    const get_release_url = async function (tag: string | null) {
         if (tag === null) return null;
         try {
-            const resp = await octokit.repos.getReleaseByTag({
+            const resp = await octokit!.repos.getReleaseByTag({
                 owner,
                 repo,
                 tag,
@@ -148,12 +152,7 @@ function helper(owner: string, repo: string) {
             console.error(err);
         }
         return null;
-    }
-}
-
-async function get_release_info(owner: string, repo: string): Promise<releaseInfoT> {
-    const data = await get_release_info_without_urls(owner, repo);
-    const get_release_url = helper(owner, repo);
+    };
     data.current.release_url = await get_release_url(data.current.release);
     data.current.prerelease_url = await get_release_url(data.current.prerelease);
     data.next.prerelease_url = await get_release_url(data.next.prerelease);
