@@ -1,7 +1,9 @@
 import * as semver from 'semver';
-import * as core from '@actions/core'
+import * as core from '@actions/core';
 import { Octokit } from "@octokit/rest";
 import { Endpoints } from '@octokit/types';
+
+export { get_all_tags };
 
 type listTagsRespT = Endpoints["GET /repos/{owner}/{repo}/tags"]["response"];
 type tagsT = listTagsRespT['data'][0];
