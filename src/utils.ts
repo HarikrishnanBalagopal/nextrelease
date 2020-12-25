@@ -70,54 +70,46 @@ async function get_release_info(owner: string, repo: string): Promise<releaseInf
         core.info("stopping because we did not find any valid semantic version tags");
         return release_info;
     }
-
     //valid_tags.push('v1.21.0-beta.0', 'v1.22.0-alpha.4') // for testing
     const sorted_tags = valid_tags.sort(semver.rcompare);
 
     const releases = sorted_tags.filter((x) => semver.prerelease(x) === null);
     const prereleases = sorted_tags.filter((x) => semver.prerelease(x) !== null);
-    const latest_release = releases.length > 0 ? releases[0] : null;
-    release_info.current.release = latest_release;
-    if (latest_release === null) {
-        console.error("no latest release. aborting");
+
+    if (releases.length === 0) {
+        core.info("stopping because there are no releases");
         return release_info;
     }
-    // start get_related_info
-    const release_obj = semver.parse(latest_release);
-    const major_minor_prereleases = prereleases.filter((x) => semver.major(x) === release_obj!.major && semver.minor(x) === release_obj!.minor);
-    const latest_prerelease_on_given_release_branch = major_minor_prereleases.length > 0 ? major_minor_prereleases[0] : null;
-    const next_minor_release = semver.inc(latest_release, "minor");
-    const next_major_release = semver.inc(latest_release, "major");
-    // end get_related_info
+    const current_release = releases[0];
+    release_info.current.release = current_release;
 
-    release_info.current.prerelease = latest_prerelease_on_given_release_branch;
-    if (latest_prerelease_on_given_release_branch === null) {
-        console.error("no latest prerelease. aborting");
+    if (prereleases.length === 0) {
+        core.info("stopping because there are no prereleases");
         return release_info;
     }
 
-    const prereleases_after_current_release = prereleases.filter((x) =>
-        semver.gt(x, latest_release)
-    );
+    const current_release_obj: semver.SemVer = semver.parse(current_release)!; // ! is the type assertion for not null
+    const major_minor_prereleases = prereleases.filter(x => semver.major(x) === current_release_obj.major && semver.minor(x) === current_release_obj.minor);
+    if (major_minor_prereleases.length === 0) {
+        core.info("stopping because there are no prereleases with the same major and minor version as the latest release");
+        return release_info;
+    }
+    const latest_prerelease_on_current_release_branch = major_minor_prereleases[0];
+    release_info.current.prerelease = latest_prerelease_on_current_release_branch;
+
+    const prereleases_after_current_release = prereleases.filter(x => semver.gt(x, current_release));
     if (prereleases_after_current_release.length === 0) {
-        console.log("no prereleases after current release");
+        core.info("stopping because there are no prereleases after current release");
         return release_info;
     }
 
-    const next_minor_prereleases = prereleases_after_current_release.filter(
-        (x) =>
-            semver.major(x) === semver.major(latest_release) &&
-            semver.minor(x) === semver.minor(info.next_minor_release)
-    );
-    const next_major_prereleases = prereleases_after_current_release.filter(
-        (x) => semver.major(x) === semver.major(info.next_major_release)
-    );
+    const next_minor = semver.minor(semver.inc(current_release, "minor")!);
+    const next_major = semver.major(semver.inc(current_release, "major")!);
+    const next_minor_prereleases = prereleases_after_current_release.filter(x => semver.major(x) === semver.major(current_release) && semver.minor(x) === next_minor);
+    const next_major_prereleases = prereleases_after_current_release.filter(x => semver.major(x) === next_major);
 
-    if (
-        next_minor_prereleases.length === 0 &&
-        next_major_prereleases.length === 0
-    ) {
-        console.error("next release is neither minor nor major");
+    if (next_minor_prereleases.length === 0 && next_major_prereleases.length === 0) {
+        core.info("stopping because next release is neither minor nor major");
         return release_info;
     }
 
@@ -132,7 +124,7 @@ async function get_release_info(owner: string, repo: string): Promise<releaseInf
     );
     const next_next_minor_prereleases = prereleases_after_current_release.filter(
         (x) =>
-            semver.major(x) === semver.major(latest_release) &&
+            semver.major(x) === semver.major(current_release) &&
             semver.minor(x) === next_next_minor
     );
     const next_next_major_prereleases = prereleases_after_current_release.filter(
